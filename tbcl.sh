@@ -46,9 +46,7 @@ Message:		dm 9		*WIP* direct messages user #9
 Reply:			9 hey		replying to post #9
 "
 }
-
 # FUNC ProgressBar
-# https://github.com/fearside/ProgressBar/
 function ProgressBar {
     let _progress=(${1}*100/${2}*100)/100
     let _done=(${_progress}*4)/10
@@ -59,7 +57,6 @@ function ProgressBar {
 }
 
 ## prompt user to choose account on first run (.current_account is empty)
-touch .current_account
 if [ -s .current_account ]
 then
 	username=$(cat .current_account)
@@ -248,7 +245,10 @@ cursor_bottom=$(cat .search_cursor_bottom 2>/dev/null)
 tweet_search="lang:en $@ -filter:links -filter:replies"
 tweet_search_encoded=$(echo "$tweet_search" | jq -sRr @uri)
 
-curl -s "https://twitter.com/i/api/2/search/adaptive.json?include_profile_interstitial_type=1&include_blocking=1&include_blocked_by=1&include_followed_by=1&include_want_retweets=1&include_mute_edge=1&include_can_dm=1&include_can_media_tag=1&include_ext_has_nft_avatar=1&include_ext_is_blue_verified=1&include_ext_verified_type=1&include_ext_profile_image_shape=1&skip_status=1&cards_platform=Web-12&include_cards=1&include_ext_alt_text=true&include_ext_limited_action_results=false&include_quote_count=true&include_reply_count=1&tweet_mode=extended&include_ext_views=true&include_entities=true&include_user_entities=true&include_ext_media_color=true&include_ext_media_availability=true&include_ext_sensitive_media_warning=true&include_ext_trusted_friends_metadata=true&send_error_codes=true&simple_quoted_tweet=true&q=$tweet_search_encoded&tweet_search_mode=live&query_source=typed_query&count=20&requestContext=launch&pc=1&spelling_corrections=1&include_ext_edit_control=true&ext=mediaStats,highlightedLabel,hasNftAvatar,voiceInfo,birdwatchPivot,enrichments,superFollowMetadata,unmentionInfo,editControl,vibe" \
+# when fixing:
+# add &cursor=$cursor_bottom
+# add &q=$tweet_search_encoded
+curl -s "https://twitter.com/i/api/2/search/adaptive.json?include_profile_interstitial_type=1&include_blocking=1&include_blocked_by=1&include_followed_by=1&include_want_retweets=1&include_mute_edge=1&include_can_dm=1&include_can_media_tag=1&include_ext_has_nft_avatar=1&include_ext_is_blue_verified=1&include_ext_verified_type=1&include_ext_profile_image_shape=1&skip_status=1&cards_platform=Web-12&include_cards=1&include_ext_alt_text=true&include_ext_limited_action_results=false&include_quote_count=true&include_reply_count=1&tweet_mode=extended&include_ext_views=true&include_entities=true&include_user_entities=true&include_ext_media_color=true&include_ext_media_availability=true&include_ext_sensitive_media_warning=true&include_ext_trusted_friends_metadata=true&send_error_codes=true&simple_quoted_tweet=true&q=$tweet_search_encoded&tweet_search_mode=live&query_source=typed_query&count=20&cursor=$cursor_bottom&requestContext=launch&pc=1&spelling_corrections=1&include_ext_edit_control=true&ext=mediaStats,highlightedLabel,hasNftAvatar,voiceInfo,birdwatchPivot,enrichments,superFollowMetadata,unmentionInfo,editControl,vibe" \
 -H "$user_agent" \
 -H 'Accept: */*' \
 -H 'Accept-Language: en-CA,en-US;q=0.7,en;q=0.3' \
@@ -268,7 +268,8 @@ cat out.json | jq . | grep '"value": "scroll:' | cut -d '"' -f4 > .search_cursor
 
 
 ## tweets
-tweets=$(jq '.globalObjects | .tweets[] | "\(.id_str)|\(.full_text)|\(.user_id_str)|\(.limited_actions)|\(.created_at)|\(.reply_count)|\(.quoted_status_id_str)"' "out.json" | sort -nr) 
+tweets=$(jq '.globalObjects | .tweets[] | "\(.id_str)|\(.full_text)|\(.user_id_str)|\(.limited_actions)|\(.created_at)|\(.reply_count)|\(.quoted_status_id_str)|\(.card | .card_platform | .platform | .audience | .name)"' "out.json" | sort -nr)
+
 users=$(jq '.globalObjects | .users[] | "\(.id_str)|\(.name)|\(.screen_name)|\(.can_dm)|\(.friends_count)|\(.normal_followers_count)|\(.location)|\(.description)|\(.profile_background_color)|\(.following)"' "out.json");
 
 rm .search_userlines .search_tweetlines .bad_tweets
@@ -299,6 +300,7 @@ while IFS= read -r line; do
 	tweet=$(echo "$tweets" | grep $(echo "$line" | cut -d'|' -f1))
 	tweet_id=$(echo "$tweet" | cut -d'|' -f1 | sed 's/"//g')
 	quoted_status_id_str=$(echo "$tweet" | cut -d'|' -f7 | cut -d '"' -f1)
+	audience_production=$(echo "$tweet" | cut -d '|' -f8 | cut -d '"' -f1)
 	
 	if grep "$tweet_id" .bad_tweets > /dev/null # exclude tweets that were replied to in quotes
 	then
@@ -311,6 +313,12 @@ while IFS= read -r line; do
 		#echo "$quoted_status_id_str" >> .bad_tweets
 		continue
 	fi
+
+	if [[ "$audience_production" != *"null"* ]] # skip ads containing 'promotion'
+	then
+		continue
+	fi
+
 
 	line_count=$[$line_count +1]
 
@@ -373,9 +381,8 @@ while IFS= read -r line; do
 	sed 's/\\r/ /g' | sed 's/\\"/"/g' | sed 's/ \{1,\}/ /g' |\
 	tr -cd '[:alnum:][:space:]#?@/:._-' | sed "s/^/$color[$line_count] /" >> .search_tweetlines
 
-	
-
 done <<< "$tweets"
+
 
 ## combine both files line by line
 sed 'R .search_usercolumns' .search_tweetlines >> OUTCOME.txt
@@ -409,6 +416,9 @@ function store_adverts () {
 ## gets all promoted tweets from homepage json, removes lines not containing data with sed
 jq '{tweet: .data.home.home_timeline_urt.instructions[].entries[]} | .[] | {id: .entryId, date: .content.itemContent.tweet_results.result.core.user_results.result.legacy.created_at, profile_description: .content.itemContent.tweet_results.result.core.user_results.result.legacy.description, profile_url: .content.itemContent.tweet_results.result.core.user_results.result.legacy.entities.url.urls[0].expanded_url, followers: .content.itemContent.tweet_results.result.core.user_results.result.legacy.followers_count|tostring, following: .content.itemContent.tweet_results.result.core.user_results.result.legacy.friends_count|tostring, location: .content.itemContent.tweet_results.result.core.user_results.result.legacy.location, name: .content.itemContent.tweet_results.result.core.user_results.result.legacy.name, screen_name: .content.itemContent.tweet_results.result.core.user_results.result.legacy.screen_name, business_type: .content.itemContent.tweet_results.result.core.user_results.result.professional.category[0].name, ad_text: .content.itemContent.tweet_results.result.legacy.full_text}| join("|")' out.json | sed '/^"|/d' | grep "promoted-" > .ads.json
 
+if [ -s .ads.json ]
+then 
+
 ## make advertisement directory for current user if doesnt exist
 mkdir -p "advertisements/$username"
 
@@ -437,6 +447,7 @@ $(echo "$line" | cut -d '|' -f11 | cut -d '"' -f1)" > "advertisements/$username/
 
 done <.ads.json
 
+fi # if ads file is not empty loop
 }
 
 
@@ -466,7 +477,7 @@ function tweet () {
 	## t /home/local/user/image.png
 	echo WIP
 
- 
+
 }
 
 
@@ -723,8 +734,12 @@ curl -s "https://twitter.com/i/api/graphql/$HomeLatestTimeline" \
 -H 'TE: trailers' \
 --data-raw "$(echo "$variables_query" | sed 's/\n//g')" --compressed | sed 's/|//g' > out.json
 
-store_adverts ## comment this out to disable advertisement storing 
-			  ## disabling is not recommended, the files are interesting to review and it supports twitter
+
+# file is not empty
+store_adverts 
+## comment this out to disable advertisement storing 
+## disabling is not recommended, the files are interesting to review and it supports twitter
+
 
 tweets=$(jq '{tweet: .data.home.home_timeline_urt.instructions[].entries[]} | {user: .tweet.content.itemContent.tweet_results.result.core.user_results.result.legacy.screen_name, text: .tweet.content.itemContent.tweet_results.result.legacy.full_text, meta: .tweet.entryId, retweeted: .tweet.content.itemContent.tweet_results.result.legacy.retweeted_status_result.result.__typename, quoted: .tweet.content.itemContent.tweet_results.result.quoted_status_result.result.__typename} | join("|")' out.json | grep -v "|Tweet\||promoted-tweet\|home-conversation\|cursor-" | grep -v '^"||'| head -30)
 
@@ -775,10 +790,7 @@ echo ""
 
 function notifications () {
 
-
-line_count=0
-_start=0
-_end=100
+line_count=0 && _start=0 && _end=100
 ProgressBar ${_start} ${_end}
 
 ## get notifications data
@@ -845,8 +857,8 @@ while read -r line; do
 	color=$(colprint "[$rand_color]") 
 	line_count=$[$line_count +1]
 
-# TODO deal with retweets
-# TODO deal with multiple people liking one status
+	# TODO deal with retweets
+	# TODO deal with multiple people liking one status
 
 	type=$(echo "$line" | cut -d '|' -f1)
 
@@ -864,10 +876,7 @@ while read -r line; do
 		liked_by_name=$(jq -r --arg liked_by_id "$liked_by_id" '.globalObjects | .users | .[$liked_by_id].name' out.json)
 		echo "$liked_by_name (@$liked_by_user) liked:" >> OUTCOME.txt
 		echo "> $liked_tweet" | sed 's/\\n/ /g' | sed 's/"//g' >> OUTCOME.txt
-
-		## follow_account_id|NULL|account_username
 		echo "$liked_by_id||$liked_by_user" >> .notifications_variables
-
 	fi
 
 	if [[ "$type" == *"user_replied_to_your_tweet"* ]]
@@ -879,15 +888,10 @@ while read -r line; do
 		replying_to_id=$(jq -r --arg reply_tweet "$reply_tweet" '.globalObjects | .tweets | .[$reply_tweet].in_reply_to_status_id_str' out.json)
 		replying_to_text=$(jq --arg replying_to_id "$replying_to_id" '.globalObjects | .tweets | .[$replying_to_id].full_text' out.json)
 		reply_name=$(jq -r --arg reply_from_id "$reply_from_id" '.globalObjects | .users | .[$reply_from_id].name' out.json)
-
-		## echo "reply_id:$reply_tweet"
 		echo "$reply_name (@$reply_from) replied:" >> OUTCOME.txt
 		echo "$reply_text" | sed 's/\\n/ /g' | sed 's/"//g' >> OUTCOME.txt
 		echo "> $replying_to_text" | sed 's/\\n/ /g' | sed 's/"//g' >> OUTCOME.txt
-
-		## follow_account_id|interact_tweet_id|account_username
 		echo "$reply_from_id|$reply_tweet|$reply_from" >> .notifications_variables
-
 	fi
 
 	if [[ "$type" == *"user_liked_multiple_tweets"* ]]
@@ -897,14 +901,8 @@ while read -r line; do
 		liked_by_id=$(jq -r --arg notification_id "$notification_id" '.globalObjects | .notifications | .[$notification_id].message.entities[0].ref.user.id' out.json)
 		liked_by_username=$(jq -r --arg liked_by_id "$liked_by_id" '.globalObjects | .users | .[$liked_by_id].screen_name' out.json)
 		liked_name=$(jq -r --arg liked_by_id "$liked_by_id" '.globalObjects | .users | .[$liked_by_id].name' out.json)
-
 		echo "$liked_name (@$liked_by_username) liked $liked_text of your tweets" >> OUTCOME.txt
-		## echo "@$liked_by_username"
-		## echo "user_id:$liked_by_id"
-
-		## follow_account_id|NULL|account_username
 		echo "$liked_by_id||$liked_by_username" >> .notifications_variables
-		
 	fi
 
 	if [[ "$type" == *"users_followed_you"* ]]
@@ -914,14 +912,8 @@ while read -r line; do
 		followed_by_id=$(jq -r --arg notification_id "$notification_id" '.globalObjects | .notifications | .[$notification_id].message.entities[0].ref.user.id' out.json)
 		followed_by_username=$(jq -r --arg followed_by_id "$followed_by_id" '.globalObjects | .users | .[$followed_by_id].screen_name' out.json)
 		followed_by_name=$(jq -r --arg followed_by_id "$followed_by_id" '.globalObjects | .users | .[$followed_by_id].name' out.json)
-
-		## echo "$followed_text"
 		echo "$followed_by_name (@$followed_by_username) followed you" >> OUTCOME.txt
-		## echo "user_id:$followed_by_id"
-
-		## follow_account_id|NULL|account_username
 		echo "$followed_by_id||$followed_by_username" >> .notifications_variables 
-
 	fi
 
 	if [[ "$type" == *"user_mentioned_you"* ]]
@@ -932,25 +924,28 @@ while read -r line; do
 		reply_from_id=$(jq -r --arg mention_id "$mention_id" '.globalObjects | .tweets | .[$mention_id].user_id_str' out.json)
 		from_username=$(jq -r --arg reply_from_id "$reply_from_id" '.globalObjects | .users | .[$reply_from_id].screen_name' out.json)
 		from_user=$(jq -r --arg reply_from_id "$reply_from_id" '.globalObjects | .users | .[$reply_from_id].name' out.json)
-
-		## echo "$mention_text"
-		## echo "$mention_id"
-		## echo "$reply_from_id"
-		## echo "@$from_username"
-		
 		echo "$from_user (@$from_username) mentioned you:" >> OUTCOME.txt
 		echo "$mention_text" | sed 's/\\n/ /g' | sed 's/"//g' >> OUTCOME.txt
-
-		## follow_account_id|interact_tweet_id|account_username
 		echo "$reply_from_id|$notification_id|$from_username" >> .notifications_variables
-		
+	fi
+
+	if [[ "$type" == *"generic_login_notification"* ]]
+	then	
+		notification_id=$(echo "$line" | cut -d'|' -f3) 
+		echo "generic_login_notification" >> OUTCOME.txt
+		echo "||" >> .notifications_variables
+	fi
+	
+	if [[ "$type" == *"users_retweeted_reply_to_you"* ]]
+	then	
+		notification_id=$(echo "$line" | cut -d'|' -f3) 
+		echo "users_retweeted_reply_to_you" >> OUTCOME.txt
+		echo "||" >> .notifications_variables
 	fi
 	
 	echo -n -e "${RESET}" >> OUTCOME.txt
 
 done <<< "$result"
-
-## tput rmam ## disable line wrapping for long lines in small terminal
 
 }
 
@@ -975,27 +970,22 @@ search_page=1
 while :
 do
 
-[[ -z "$command_input" ]] && tips # run tips on first launch
-
-notifications_alert
-dm=$(echo "$notifications_response" | cut -d '|' -f2)
-notification=$(echo "$notifications_response" | cut -d '|' -f1)
-
+	[[ -z "$command_input" ]] && tips # run tips on first launch
+	notifications_alert
+	dm=$(echo "$notifications_response" | cut -d '|' -f2)
+	notification=$(echo "$notifications_response" | cut -d '|' -f1)
 	echo -n "$(tput sgr0)"
 	echo "💬 $dm 🔔 $notification"
 	read -p -r -ep "$(echo -e $BOLD)@$username > $(echo -e $RESET)" command_input
 
-
-# MAIN like
+	# MAIN like
 	if [[ "$command_input" = "l "* ]]
 	then
-	
 		clear
 		cat OUTCOME.txt
 		echo ""
 		strings="" # reset liked strings
 		fix_command=$(echo "$command_input" | sed 's/l //' | sed 's/,/ /g')
-
 		like_array=( $fix_command )
 		for i in "${like_array[@]}"
 		do
@@ -1004,61 +994,40 @@ notification=$(echo "$notifications_response" | cut -d '|' -f1)
 				like_string=$(sed -n ${i}p <<< "$tweets" | cut -d'|' -f1 | cut -d'"' -f2)
 				[[ -z "$like_string" ]] && echo -e "${RED}${BOLD}Can't like this notifcation:${RESET} [$i]"
 			fi
-
 			if [[ "$feed_type" == *"homepage"* ]]
 			then
 				like_string=$(sed -n ${i}p <<< "$tweets" | cut -d'|' -f3 | cut -d'-' -f2)
 				[[ -z "$like_string" ]] && echo -e "${RED}${BOLD}Can't like this notifcation:${RESET} [$i]"
 			fi
-
 			if [[ "$feed_type" == *"notifications"* ]]
 			then
 				like_string=$(sed -n ${i}p <<< "$(cat .notifications_variables)" | cut -d'|' -f2)
 				[[ -z "$like_string" ]] && echo -e "${RED}${BOLD}Can't like this notifcation:${RESET} [$i]"
 			fi
-
 			strings="$strings $like_string"
-
 		done
 		like "$strings"
 		continue
-	
 	fi 
 
-
-# MAIN notifications
-# TODO implement code into the function
+	# MAIN notifications
 	if [[ "$command_input" = "n" ]]
 	then
-	
 		feed_type="notifications" && command="notifications:" && clear
-		notifications
-
-		clear
-		cat OUTCOME.txt
-		echo ""
-
-		continue
-
+		notifications && clear && cat OUTCOME.txt && echo "" && continue
 	fi
 
-
-# MAIN follow
-# TODO functionality that looks at last command used,
-## DM > reply
+	# MAIN follow
 	if [[ "$command_input" = "f "* ]]
 	then
-
 		clear
 		cat OUTCOME.txt
 		echo ""
-
 		strings="" # reset followed strings
 		fix_command=$(echo "$command_input" | sed 's/f //' | sed 's/,/ /g')
 		follow_array=( $fix_command )
 		for i in "${follow_array[@]}"
 		do
-
 			if [[ "$feed_type" == *"search"* ]]
 			then
 				follow_string=$(sed -n ${i}p <<< "$tweets" | cut -d'|' -f3)
@@ -1066,12 +1035,10 @@ notification=$(echo "$notifications_response" | cut -d '|' -f1)
 				echo "following: $follow_string"
 				strings="$strings $follow_string"
 			fi
-
 			if [[ "$feed_type" == *"homepage"* ]]
 			then
 				echo -e "${RED}${BOLD}You're already following homepage users.${RESET}" && break
 			fi
-
 			if [[ "$feed_type" == *"notifications"* ]]
 			then
 				follow_string=$(sed -n ${i}p <<< "$(cat .notifications_variables)" | cut -d'|' -f1)
@@ -1079,18 +1046,14 @@ notification=$(echo "$notifications_response" | cut -d '|' -f1)
 				echo "following: $follow_string"
 				strings="$strings $follow_string"
 			fi
-
 		done
-		# TODO uncomment
 		follow "$strings"
 		echo ""
 		continue
-
 	fi 
 
-
-# MAIN reply
-# TODO DM > reply
+	# MAIN reply
+	# TODO DM > reply
 	if [[ "$command_input" = [0-9]* ]]
 	then
 		clear
@@ -1098,70 +1061,47 @@ notification=$(echo "$notifications_response" | cut -d '|' -f1)
 		echo ""
 		tweet_number=$(echo "$command_input" | cut -d' ' -f1)
 		fix_command=$(echo "$command_input" | sed "s/$tweet_number //") # removes tweet number from beginning of string
-		
-			if [[ "$feed_type" == *"search"* ]]
-			then
-				tweet_string=$(sed -n ${tweet_number}p <<< "$tweets" | cut -d'|' -f1 | cut -d'"' -f2)
-				[[ -z "$tweet_string" ]] && echo -e "${RED}${BOLD}Can't reply to:${RESET} [$tweet_number]" && continue
-			fi
-
-			if [[ "$feed_type" == *"homepage"* ]]
-			then
-				tweet_string=$(sed -n ${tweet_number}p <<< "$tweets" | cut -d'|' -f3 | cut -d'-' -f2)
-				[[ -z "$tweet_string" ]] && echo -e "${RED}${BOLD}Can't reply to:${RESET} [$tweet_number]" && continue
-			fi
-
-			if [[ "$feed_type" == *"notifications"* ]]
-			then
-				tweet_string=$(sed -n ${tweet_number}p <<< "$(cat .notifications_variables)" | cut -d'|' -f2)
-				[[ -z "$tweet_string" ]] && echo -e "${RED}${BOLD}Can't reply to notifcation:${RESET} [$tweet_number]" && continue
-			fi
-
-		reply "$tweet_string|$fix_command"
-		continue
-
-	fi
-
-
-# MAIN refresh
-	if [[ "$command_input" = "r"* ]]
-	then
-
-		clear
-
 		if [[ "$feed_type" == *"search"* ]]
 		then
-			search_page=1 
-			rm .search_cursor_bottom # remove old cursor so its not included in new search
-			query=$(cat .last_search_query)
-			search "$query"
+			tweet_string=$(sed -n ${tweet_number}p <<< "$tweets" | cut -d'|' -f1 | cut -d'"' -f2)
+			[[ -z "$tweet_string" ]] && echo -e "${RED}${BOLD}Can't reply to:${RESET} [$tweet_number]\n" && continue
 		fi
-
 		if [[ "$feed_type" == *"homepage"* ]]
 		then
-			homepage
-			clear
-			cat OUTCOME.txt
-			echo ""
+			tweet_string=$(sed -n ${tweet_number}p <<< "$tweets" | cut -d'|' -f3 | cut -d'-' -f2)
+			[[ -z "$tweet_string" ]] && echo -e "${RED}${BOLD}Can't reply to:${RESET} [$tweet_number]\n" && continue
 		fi
-
 		if [[ "$feed_type" == *"notifications"* ]]
 		then
-			notifications
-			clear
-			cat OUTCOME.txt
-			echo ""
+			tweet_string=$(sed -n ${tweet_number}p <<< "$(cat .notifications_variables)" | cut -d'|' -f2)
+			[[ -z "$tweet_string" ]] && echo -e "${RED}${BOLD}Can't reply to notifcation:${RESET} [$tweet_number]\n" && continue
 		fi
-
+		reply "$tweet_string|$fix_command"
 		continue
+	fi
 
+	# MAIN refresh
+	if [[ "$command_input" = "r"* ]]
+	then
+		clear
+		if [[ "$feed_type" == *"search"* ]]
+		then
+			search_page=1 && rm .search_cursor_bottom && query=$(cat .last_search_query) && search "$query"
+		fi
+		if [[ "$feed_type" == *"homepage"* ]]
+		then
+			homepage && clear && cat OUTCOME.txt &&echo ""
+		fi
+		if [[ "$feed_type" == *"notifications"* ]]
+		then
+			notifications && clear && cat OUTCOME.txt && echo ""
+		fi
+		continue
 	fi 
 
-
-# MAIN search
+	# MAIN search	
 	if [[ "$command_input" = "s "* ]]
 	then
-	
 		feed_type="search"
 		search_page=1 && command="search:" && clear
 		rm .search_cursor_bottom # remove old cursor so its not included in new search
@@ -1169,38 +1109,22 @@ notification=$(echo "$notifications_response" | cut -d '|' -f1)
 		echo "$query" > .last_search_query
 		search "$query"
 		continue
+	fi
 
-	fi 
-
-
-# MAIN next page
+	# MAIN next page
 	if [[ "$command_input" = "np"* ]]
 	then
-
-	# TODO add functionality for homepage next page
-
-		search_page=$[$search_page +1] && clear
-		query=$(cat .last_search_query)
-		search "$query"
-		continue
-
+		# TODO add functionality for homepage next page
+		search_page=$[$search_page +1] && clear && query=$(cat .last_search_query) && search "$query" && continue
 	fi
 
-
-# MAIN homepage
+	# MAIN homepage
 	if [[ "$command_input" = "h" ]]
 	then
-
-		feed_type="homepage" && command="homepage:" && clear
-		homepage
-		continue
-
+		feed_type="homepage" && command="homepage:" && clear && homepage && continue
 	fi
 
-
-
-# MAIN tips
-
-tips
+	# MAIN tips
+	tips
 
 done

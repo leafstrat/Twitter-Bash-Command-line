@@ -32,7 +32,7 @@ sudo apt-get install bash curl jq
 - View notifications
 - See notification count during all interactions
 - Keep track of all advertisements targeted to you
-- Save list of all accounts you've followed
+- Save list of accounts you've followed through the terminal
 
 ### TODO:
 - [ ] Next page home feed
