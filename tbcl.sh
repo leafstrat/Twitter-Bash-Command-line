@@ -33,6 +33,7 @@ function tips () {
 clear
 echo "
 Notifications:		n 		*WIP* shows notifications
+Switch Account:		sw		choose from account to switch to
 Next page:		np		next page results from search
 Homepage:		h 		*WIP* shows homepage chronological feed 
 Refresh:		r		refreshes last search
@@ -56,26 +57,8 @@ function ProgressBar {
 	printf "\r${BOLD}loading ${command}${RESET} [${_fill// /${GREEN}#${RESET}}${_empty// /-}] ${_progress}%% "
 }
 
-## prompt user to choose account on first run (.current_account is empty)
-if [ -s .current_account ]
-then
-	username=$(cat .current_account)
-else
-    echo -e "${BOLD}Accounts:${RESET}"
-	user_accounts=( $(ls accounts | sed 's/^/-/') )
-	for i in "${user_accounts[@]}"
-	do
-		echo "$i"
-	done
-	echo -n "$(tput sgr0)"
-	read -p -r -ep "$(echo -e $BOLD)choice > $(echo -e $RESET)" username_input
-	cookie_query=$(cat accounts/$username_input)
-	[ -z "$cookie_query" ] && echo "Cookie is empty for $username_input, exiting" && exit
-	echo "$username_input" > .current_account
-	clear
-	username="$username_input"
-fi
 
+function get_variables () {
 cookie_query=$(cat accounts/$username | grep "Cookie:")
 [ -z "$cookie_query" ] && echo "Cookie is empty for $username, exiting" && exit
 
@@ -87,6 +70,52 @@ FavoriteTweet=$(cat accounts/$username | grep "/FavoriteTweet")
 CreateTweet=$(cat accounts/$username | grep "/CreateTweet")
 HomeLatestTimeline=$(cat accounts/$username | grep "/HomeLatestTimeline")
 tweet_create_query_ID=$(cat accounts/$username | grep "/CreateTweet" | cut -d'/' -f1)
+
+}
+
+# FUNC SwitchAccount
+##------------------------------------------------
+##                     _ __       __                                         __ 
+##      ______      __(_) /______/ /_     ____ _______________  __  ______  / /_
+##     / ___/ | /| / / / __/ ___/ __ \   / __ `/ ___/ ___/ __ \/ / / / __ \/ __/
+##    (__  )| |/ |/ / / /_/ /__/ / / /  / /_/ / /__/ /__/ /_/ / /_/ / / / / /_  
+##   /____/ |__/|__/_/\__/\___/_/ /_/   \__,_/\___/\___/\____/\__,_/_/ /_/\__/  
+##                                                                              
+##------------------------------------------------
+
+## rm these files on account switch .search_cursor_bottom .last_search_query .ads.json
+function SwitchAccount () {
+rm .search_cursor_bottom .last_search_query .ads.json 2> /dev/null
+line_count=0
+clear
+echo -e "${BOLD}Choose Account${RESET}\n"
+
+accounts=$(ls accounts/* | grep -v template)
+while read -r line; do
+	line_count=$[$line_count +1]
+	echo "[$line_count] $(echo "$line" | cut -d '/' -f2)"
+done <<< "$accounts"
+
+echo ""
+read -p -r -ep "$(echo -e $BOLD)@$username > $(echo -e $RESET)" switch_account
+
+username=$(sed -n ${switch_account}p <<< "$accounts" | cut -d '/' -f2)
+get_variables
+echo "$username" > .current_account
+}
+
+
+
+## prompt user to choose account on first run (.current_account is empty)
+if [ -s .current_account ]
+then
+	username=$(cat .current_account)
+	get_variables
+else
+    SwitchAccount
+	get_variables
+fi
+
 
 
 
@@ -241,14 +270,21 @@ _start=0
 _end=100
 ProgressBar ${_start} ${_end}
 
-cursor_bottom=$(cat .search_cursor_bottom 2>/dev/null)
+cursor_bottom=$(cat .search_cursor_bottom 2> /dev/null) 
+if [ -z "$cursor_bottom" ]
+then 
+	cursor_bottom_embed=""
+else 
+	cursor_bottom_embed="&cursor=$cursor_bottom"
+fi
+
 tweet_search="lang:en $@ -filter:links -filter:replies"
 tweet_search_encoded=$(echo "$tweet_search" | jq -sRr @uri)
 
-# when fixing:
-# add &cursor=$cursor_bottom
-# add &q=$tweet_search_encoded
-curl -s "https://twitter.com/i/api/2/search/adaptive.json?include_profile_interstitial_type=1&include_blocking=1&include_blocked_by=1&include_followed_by=1&include_want_retweets=1&include_mute_edge=1&include_can_dm=1&include_can_media_tag=1&include_ext_has_nft_avatar=1&include_ext_is_blue_verified=1&include_ext_verified_type=1&include_ext_profile_image_shape=1&skip_status=1&cards_platform=Web-12&include_cards=1&include_ext_alt_text=true&include_ext_limited_action_results=false&include_quote_count=true&include_reply_count=1&tweet_mode=extended&include_ext_views=true&include_entities=true&include_user_entities=true&include_ext_media_color=true&include_ext_media_availability=true&include_ext_sensitive_media_warning=true&include_ext_trusted_friends_metadata=true&send_error_codes=true&simple_quoted_tweet=true&q=$tweet_search_encoded&tweet_search_mode=live&query_source=typed_query&count=20&cursor=$cursor_bottom&requestContext=launch&pc=1&spelling_corrections=1&include_ext_edit_control=true&ext=mediaStats,highlightedLabel,hasNftAvatar,voiceInfo,birdwatchPivot,enrichments,superFollowMetadata,unmentionInfo,editControl,vibe" \
+## when fixing:
+## add $cursor_bottom by itself as a variable after a &
+## add &q=$tweet_search_encoded
+curl -s "https://twitter.com/i/api/2/search/adaptive.json?include_profile_interstitial_type=1&include_blocking=1&include_blocked_by=1&include_followed_by=1&include_want_retweets=1&include_mute_edge=1&include_can_dm=1&include_can_media_tag=1&include_ext_has_nft_avatar=1&include_ext_is_blue_verified=1&include_ext_verified_type=1&include_ext_profile_image_shape=1&skip_status=1&cards_platform=Web-12&include_cards=1&include_ext_alt_text=true&include_ext_limited_action_results=false&include_quote_count=true&include_reply_count=1&tweet_mode=extended&include_ext_views=true&include_entities=true&include_user_entities=true&include_ext_media_color=true&include_ext_media_availability=true&include_ext_sensitive_media_warning=true&include_ext_trusted_friends_metadata=true&send_error_codes=true&simple_quoted_tweet=true&q=$tweet_search_encoded&tweet_search_mode=live&query_source=typed_query&count=20$cursor_bottom_embed&requestContext=launch&pc=1&spelling_corrections=1&include_ext_edit_control=true&ext=mediaStats,highlightedLabel,hasNftAvatar,voiceInfo,birdwatchPivot,enrichments,superFollowMetadata,unmentionInfo,editControl,vibe" \
 -H "$user_agent" \
 -H 'Accept: */*' \
 -H 'Accept-Language: en-CA,en-US;q=0.7,en;q=0.3' \
@@ -264,11 +300,11 @@ curl -s "https://twitter.com/i/api/2/search/adaptive.json?include_profile_inters
 -H "$cookie_query" \
 -H 'TE: trailers' --compressed | sed 's/|//g' > out.json
 
-cat out.json | jq . | grep '"value": "scroll:' | cut -d '"' -f4 > .search_cursor_bottom
+cat out.json | jq . | grep -B1 '"cursorType": "Bottom"' | head -1 | cut -d'"' -f4 > .search_cursor_bottom
 
 
 ## tweets
-tweets=$(jq '.globalObjects | .tweets[] | "\(.id_str)|\(.full_text)|\(.user_id_str)|\(.limited_actions)|\(.created_at)|\(.reply_count)|\(.quoted_status_id_str)|\(.card | .card_platform | .platform | .audience | .name)"' "out.json" | sort -nr)
+tweets=$(jq '.globalObjects | .tweets[] | "\(.id_str)|\(.full_text)|\(.user_id_str)|\(.limited_actions)|\(.created_at)|\(.reply_count)|\(.quoted_status_id_str)|\(.card | .card_platform | .platform | .audience | .name)|\(.extended_entities|.media[0]|.type)"' "out.json" | sort -nr)
 
 users=$(jq '.globalObjects | .users[] | "\(.id_str)|\(.name)|\(.screen_name)|\(.can_dm)|\(.friends_count)|\(.normal_followers_count)|\(.location)|\(.description)|\(.profile_background_color)|\(.following)"' "out.json");
 
@@ -301,6 +337,7 @@ while IFS= read -r line; do
 	tweet_id=$(echo "$tweet" | cut -d'|' -f1 | sed 's/"//g')
 	quoted_status_id_str=$(echo "$tweet" | cut -d'|' -f7 | cut -d '"' -f1)
 	audience_production=$(echo "$tweet" | cut -d '|' -f8 | cut -d '"' -f1)
+	media_type=$(echo "$tweet" | cut -d '|' -f9 | cut -d '"' -f1)
 	
 	if grep "$tweet_id" .bad_tweets > /dev/null # exclude tweets that were replied to in quotes
 	then
@@ -315,6 +352,11 @@ while IFS= read -r line; do
 	fi
 
 	if [[ "$audience_production" != *"null"* ]] # skip ads containing 'promotion'
+	then
+		continue
+	fi
+
+	if [[ "$media_type" != *"null"* ]] # skip tweets containing anything but 'null' in media type, ie:photo
 	then
 		continue
 	fi
@@ -735,8 +777,7 @@ curl -s "https://twitter.com/i/api/graphql/$HomeLatestTimeline" \
 --data-raw "$(echo "$variables_query" | sed 's/\n//g')" --compressed | sed 's/|//g' > out.json
 
 
-# file is not empty
-store_adverts 
+store_adverts &
 ## comment this out to disable advertisement storing 
 ## disabling is not recommended, the files are interesting to review and it supports twitter
 
@@ -978,6 +1019,12 @@ do
 	echo "💬 $dm 🔔 $notification"
 	read -p -r -ep "$(echo -e $BOLD)@$username > $(echo -e $RESET)" command_input
 
+	# MAIN notifications
+	if [[ "$command_input" = "sw" ]]
+	then
+		SwitchAccount
+	fi
+
 	# MAIN like
 	if [[ "$command_input" = "l "* ]]
 	then
@@ -1104,7 +1151,7 @@ do
 	then
 		feed_type="search"
 		search_page=1 && command="search:" && clear
-		rm .search_cursor_bottom # remove old cursor so its not included in new search
+		rm .search_cursor_bottom 2> /dev/null # remove old cursor so its not included in new search
 		query=$(echo "$command_input" | sed 's/s //')
 		echo "$query" > .last_search_query
 		search "$query"

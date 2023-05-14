@@ -1,6 +1,5 @@
 *
 !.gitignore
-!tbcl
 !tbcl.sh
 !README.md
 !accounts/template
