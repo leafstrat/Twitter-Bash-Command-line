@@ -4,5 +4,5 @@
 !README.md
 !accounts/template
 !accounts/
-!advertisements/
-!follows/
+!advertisements/.gitkeep
+!follows/.gitkeep
