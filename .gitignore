@@ -5,4 +5,6 @@
 !accounts/template
 !accounts/
 !advertisements/.gitkeep
+!advertisements/
 !follows/.gitkeep
+!follows/
