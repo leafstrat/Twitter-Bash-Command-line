@@ -46,7 +46,9 @@ Message:		dm 9		*WIP* direct messages user #9
 Reply:			9 hey		replying to post #9
 "
 }
+
 # FUNC ProgressBar
+# https://github.com/fearside/ProgressBar/
 function ProgressBar {
     let _progress=(${1}*100/${2}*100)/100
     let _done=(${_progress}*4)/10
@@ -57,6 +59,7 @@ function ProgressBar {
 }
 
 ## prompt user to choose account on first run (.current_account is empty)
+touch .current_account
 if [ -s .current_account ]
 then
 	username=$(cat .current_account)
@@ -463,8 +466,7 @@ function tweet () {
 	## t /home/local/user/image.png
 	echo WIP
 
-
-# fold -s -w75 | nl -bn -w10 | LESS= less -MINRz-4+G:1g
+ 
 }
 
 
