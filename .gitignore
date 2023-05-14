@@ -1,0 +1,9 @@
+*
+!.gitignore
+!tbcl
+!README.md
+
+advertisements/*
+follows/*
+!accounts/template
+accounts/*
