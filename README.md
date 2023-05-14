@@ -9,9 +9,10 @@ Made this for myself to make using Twitter more enjoyable for me. I like doing t
 This Bash script is using the undocumented API so things on Twitter's end are prone to change frequently destroying most usability in the script. It will require me to find  these new changes and modify the script to reflect them in order to keep working. This is not recommended to use if you aren't comfortable with Bash so you can make your own changes and updates when things break.
 
 ### Requirements:
+GNU core utilities: sed, cut, grep - etc
+
 ```
-sudo apt-get install curl
-sudo apt-get install jq
+sudo apt-get install bash curl jq
 ```
 
 ### Adding account data:
@@ -31,6 +32,7 @@ sudo apt-get install jq
 - View notifications
 - See notification count during all interactions
 - Keep track of all advertisements targeted to you
+- Save list of all accounts you've followed
 
 ### TODO:
 - [ ] Next page home feed
@@ -45,4 +47,9 @@ sudo apt-get install jq
 - [ ] Lookup user and print profile data
 - [ ] Notifications - handle a retweet
 - [ ] Notifications - deal with multiple people liking a tweet
-
+- [ ] Unfollow accounts not following you back from your follow list after a certain threshold of days
+- [ ] Mute an account from your homepage
+- [ ] Modify search query arguments ie: -filter:links
+- [ ] Delete direcrt message
+- [ ] showme         : reports the raw information of yourself.
+- [ ] whoami         : reports the screen name of yourself.
